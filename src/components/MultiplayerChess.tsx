@@ -957,6 +957,15 @@ const MultiplayerChess = () => {
     setShowWaiting(false);
   };
 
+  // Polling to refresh game state for both white and black
+  useEffect(() => {
+    if (!gameSession || !gameSession.white_player_id || !gameSession.black_player_id) return;
+    const interval = setInterval(() => {
+      reloadBoardState();
+    }, 3000); // Poll every 3 seconds
+    return () => clearInterval(interval);
+  }, [gameSession, reloadBoardState]);
+
   if (!user) {
     return (
       <div className="flex flex-col items-center justify-center min-h-64 space-y-4 p-8 text-center">
