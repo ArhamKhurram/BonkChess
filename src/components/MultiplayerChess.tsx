@@ -907,6 +907,7 @@ const MultiplayerChess = () => {
 
   // Manual refresh fallback
   const manualRefreshGameState = async () => {
+    await supabase.auth.getSession(); // force refresh session
     if (!gameSession) return;
     try {
       const { data, error } = await supabase
