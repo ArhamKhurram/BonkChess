@@ -51,15 +51,65 @@ const MultiplayerChess = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // Add debugging for board state changes
-  useEffect(() => {
-    console.log('Board state changed:', board);
-  }, [board]);
+  const reloadBoardState = useCallback(async () => {
+    if (!gameSession) return;
 
-  // Add debugging for current player changes
-  useEffect(() => {
-    console.log('Current player changed:', currentPlayer);
-  }, [currentPlayer]);
+    
+    try {
+      console.log('Reloading board state for game session:', gameSession.id);
+
+      const { data, error } = await supabase
+        .from('game_sessions')
+        .select('*')
+        .eq('id', gameSession.id)
+        .single();
+
+      if (error) {
+        console.error('Error fetching game session:', error);
+        toast({
+          title: "Error",
+          description: "Failed to reload game state",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      console.log('Fetched game session data:', data);
+
+      let parsedBoardState: (ChessPiece | null)[][];
+
+      if (typeof data.board_state === 'string') {
+        parsedBoardState = JSON.parse(data.board_state) as (ChessPiece | null)[][];
+      } else if (Array.isArray(data.board_state)) {
+        parsedBoardState = data.board_state as unknown as (ChessPiece | null)[][];
+      } else {
+        console.error('Invalid board state format from database:', data.board_state);
+        parsedBoardState = initialBoard;
+      }
+
+      // Update all state from database
+      setGameSession({
+        ...data,
+        board_state: parsedBoardState,
+        current_turn: data.current_turn as 'white' | 'black',
+        game_status: data.game_status as 'waiting' | 'active' | 'completed' | 'abandoned'
+      });
+      setBoard(parsedBoardState);
+      setCurrentPlayer(data.current_turn as 'white' | 'black');
+      setMoveHistory(data.move_history || []);
+
+      console.log('Board state reloaded:', parsedBoardState);
+    } catch (error) {
+      console.error('Error reloading board state:', error);
+      toast({
+        title: "Error",
+        description: "Failed to reload game state",
+        variant: "destructive"
+      });
+    }
+
+
+  }, [gameSession, setGameSession, setBoard, setCurrentPlayer, setMoveHistory, toast]);
 
   useEffect(() => {
     if (!gameSession) return;
@@ -120,12 +170,12 @@ const MultiplayerChess = () => {
               setCurrentPlayer(updatedSession.current_turn as 'white' | 'black');
               setMoveHistory(updatedSession.move_history || []);
               
-              // Always set playerColor based on user ID and session
-              const isWhitePlayer = updatedSession.white_player_id === user.id;
-              const isBlackPlayer = updatedSession.black_player_id === user.id;
-              if (isWhitePlayer) setPlayerColor('white');
-              else if (isBlackPlayer) setPlayerColor('black');
-              else setPlayerColor(null);
+              // // Always set playerColor based on user ID and session
+              // const isWhitePlayer = updatedSession.white_player_id === user.id;
+              // const isBlackPlayer = updatedSession.black_player_id === user.id;
+              // if (isWhitePlayer) setPlayerColor('white');
+              // else if (isBlackPlayer) setPlayerColor('black');
+              // else setPlayerColor(null);
               
               console.log('Board state updated to:', parsedBoardState);
             } else {
@@ -134,14 +184,23 @@ const MultiplayerChess = () => {
             
             // Reset loading state since we received an update
             setIsMakingMove(false);
+
+            reloadBoardState();
             
             // Show appropriate notifications based on game status
             const isWhitePlayer = updatedSession.white_player_id === user.id;
             const isBlackPlayer = updatedSession.black_player_id === user.id;
-            if (isWhitePlayer || isBlackPlayer) {
+
+                        if (isWhitePlayer || isBlackPlayer) {
+              // Set player color if not already set
+              if (!playerColor) {
+                setPlayerColor(isWhitePlayer ? 'white' : 'black');
+              }
+              
+              // Show appropriate notifications based on game status
               if (updatedSession.game_status === 'active' && updatedSession.white_player_id && updatedSession.black_player_id) {
                 setShowLobby(false);
-                setShowWaiting(false);
+                
                 // Show turn change notification
                 const newTurn = updatedSession.current_turn as 'white' | 'black';
                 if (newTurn === (isWhitePlayer ? 'white' : 'black')) {
@@ -173,10 +232,24 @@ const MultiplayerChess = () => {
       )
       .subscribe();
 
+    // Log all active realtime channels
+    const channels = supabase.getChannels();
+    console.log('Active Supabase realtime channels:', channels);
+
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [gameSession, user?.id]);
+  }, [gameSession, user?.id, playerColor]);
+
+  // add debugging for board state changes
+  useEffect(() => {
+    console.log('Board state changed:', board);
+  }, [board]);
+
+    // Add debugging for current player changes
+  useEffect(() => {
+    console.log('Current player changed:', currentPlayer);
+  }, [currentPlayer]);
 
   const createGame = async () => {
     if (!user) return;
@@ -297,11 +370,7 @@ const MultiplayerChess = () => {
     });
   };
 
-  const getValidMovesForPlayerMemo = useCallback(() => {
-    if (!playerColor) return [];
-    return getValidMovesForPlayer(board, playerColor);
-  }, [board, playerColor]);
-
+  // Function to handle square clicks
   const handleSquareClick = useCallback((position: Position) => {
     console.log('Square clicked:', position);
     console.log('Game state:', { 
@@ -315,6 +384,17 @@ const MultiplayerChess = () => {
     });
     
     if (!gameSession || gameSession.game_status !== 'active') {
+
+      if (gameSession.white_player_id && gameSession.black_player_id) {
+        console.log('Game is active with both players:', {
+          white: gameSession.white_player_id,
+          black: gameSession.black_player_id
+        });
+
+        // If both players are set, Update game state of both players
+        reloadBoardState();
+      }
+
       console.log('Game not active');
       return;
     }
