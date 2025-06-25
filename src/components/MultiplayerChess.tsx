@@ -111,8 +111,11 @@ const MultiplayerChess = () => {
 
   }, [gameSession, setGameSession, setBoard, setCurrentPlayer, setMoveHistory, toast]);
 
+  
   useEffect(() => {
     if (!gameSession) return;
+
+    console.log("subscribing to realtime events");
 
     const channel = supabase
       .channel('game_session_changes')
@@ -125,6 +128,8 @@ const MultiplayerChess = () => {
           filter: `id=eq.${gameSession.id}`
         },
         (payload) => {
+
+          console.log("subscribed");
           const updatedSession = payload.new as any;
           
           console.log('Real-time update received:', {
@@ -252,7 +257,10 @@ const MultiplayerChess = () => {
   }, [currentPlayer]);
 
   const createGame = async () => {
-    if (!user) return;
+    if (!user) {
+      console.log("session not active");
+      return;
+    }
 
     console.log('Creating new game for user:', user.id);
 
