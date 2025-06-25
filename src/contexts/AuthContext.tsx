@@ -132,6 +132,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       provider: 'discord',
       options: {
         redirectTo: `${window.location.origin}/play`,
+        //redirectTo: `/play`,
       },
     });
     return { error };
