@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import MultiplayerChess from '../components/MultiplayerChess';
 import ChessGame from '../components/ChessGame';
+import { supabase } from '@/integrations/supabase/client';
 import Leaderboard from '../components/Leaderboard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LogOut, Users, User, Wallet, Sword, History, Trophy, LogIn } from 'lucide-react';
@@ -38,9 +39,16 @@ const Index = () => {
   }
 
   const handleSignOut = async () => {
-    await signOut();
-    navigate('/');
+    console.log("Handling Signout.");
+    try {
+      await supabase.auth.getSession(); // force refresh session
+      await supabase.auth.signOut();
+      navigate('/');
+    } catch (err) {
+      console.error("Error signing out:", err);
+    }
   };
+  
 
   const getInitials = (email: string) => {
     if (!email) return 'G';
