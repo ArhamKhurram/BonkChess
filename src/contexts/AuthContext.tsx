@@ -44,7 +44,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (error && error.code === 'PGRST116') { // Profile not found
       // Try to get a username from Discord or fallback
       const username =  user.user_metadata?.full_name || user.email?.split('@')[0] || `user_${Date.now()}`;
-      const display_name = user.user_metadata.custom_claims.global_name || 'New Player';
+      const display_name = user.user_metadata?.custom_claims?.global_name || 'New Player';
       const { data: newProfile, error: insertError } = await supabase
         .from('profiles')
         .insert({
