@@ -58,7 +58,9 @@ CREATE POLICY "Players can view their games" ON public.game_sessions
 CREATE POLICY "Players can create games" ON public.game_sessions 
   FOR INSERT WITH CHECK (true);
 CREATE POLICY "Players can update their games" ON public.game_sessions 
-  FOR UPDATE USING (auth.uid() = white_player_id OR auth.uid() = black_player_id);
+  FOR UPDATE USING (auth.uid() = white_player_id OR black_player_id IS NULL);
+
+  
 
 -- Function to handle new user registration
 CREATE OR REPLACE FUNCTION public.handle_new_user()

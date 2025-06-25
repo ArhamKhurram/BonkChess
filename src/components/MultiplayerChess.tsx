@@ -61,8 +61,11 @@ const MultiplayerChess = () => {
     console.log('Current player changed:', currentPlayer);
   }, [currentPlayer]);
 
+  
   useEffect(() => {
     if (!gameSession) return;
+
+    console.log("subscribing to realtime events");
 
     const channel = supabase
       .channel('game_session_changes')
@@ -75,6 +78,8 @@ const MultiplayerChess = () => {
           filter: `id=eq.${gameSession.id}`
         },
         (payload) => {
+
+          console.log("subscribed");
           const updatedSession = payload.new as any;
           
           console.log('Real-time update received:', {
@@ -179,7 +184,10 @@ const MultiplayerChess = () => {
   }, [gameSession, user?.id]);
 
   const createGame = async () => {
-    if (!user) return;
+    if (!user) {
+      console.log("session not active");
+      return;
+    }
 
     console.log('Creating new game for user:', user.id);
 
@@ -234,8 +242,9 @@ const MultiplayerChess = () => {
       setPlayerColor('white'); // Creator becomes white
       // Show waiting screen for game creator
       setShowLobby(false);
-      setShowWaiting(true);
-      
+      //setShowWaiting(true);       // turn show waiting false when black player id !== null
+      // removed cause we want white to directly go into the game.
+
       // Show a toast with the game ID and a copy button
       toast({
         title: 'Game Created!',
