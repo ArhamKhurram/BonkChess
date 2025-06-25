@@ -379,7 +379,8 @@ const MultiplayerChess = () => {
   };
 
   // Function to handle square clicks
-  const handleSquareClick = useCallback((position: Position) => {
+  const handleSquareClick = useCallback(async (position: Position) => {
+    await supabase.auth.getSession(); // force refresh session
     console.log('Square clicked:', position);
     console.log('Game state:', { 
       gameSession: gameSession?.id, 
@@ -690,6 +691,7 @@ const MultiplayerChess = () => {
 
   // Function to fetch available games
   const fetchAvailableGames = async () => {
+    await supabase.auth.getSession(); // force refresh session
     try {
       const { data, error } = await supabase
         .from('game_sessions')
