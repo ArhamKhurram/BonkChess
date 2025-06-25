@@ -379,13 +379,11 @@ const MultiplayerChess = () => {
   };
 
   // Function to handle square clicks
-  const handleSquareClick = useCallback(async (position: Position) => {
-    await supabase.auth.getSession(); // force refresh session
-    console.log('Square clicked:', position);
-    console.log('Game state:', { 
+  const handleSquareClick = useCallback((position: Position) => {
+    console.log('🟦 Square clicked:', position);
+    console.log('🟦 Game state:', { 
       gameSession: gameSession?.id, 
       gameStatus: gameSession?.game_status, 
-      gameState, 
       currentPlayer, 
       playerColor, 
       isMakingMove,
@@ -393,36 +391,30 @@ const MultiplayerChess = () => {
     });
     
     if (!gameSession || gameSession.game_status !== 'active') {
-
-      if (gameSession.white_player_id && gameSession.black_player_id) {
-        console.log('Game is active with both players:', {
+      if (gameSession?.white_player_id && gameSession?.black_player_id) {
+        console.log('🟦 Game is active with both players:', {
           white: gameSession.white_player_id,
           black: gameSession.black_player_id
         });
-
-        // If both players are set, Update game state of both players
         reloadBoardState();
       }
-
-      console.log('Game not active');
+      console.log('🟦 Game not active');
       return;
     }
 
     if (currentPlayer !== playerColor) {
-      console.log('Not your turn - currentPlayer:', currentPlayer, 'playerColor:', playerColor);
+      console.log('🟦 Not your turn - currentPlayer:', currentPlayer, 'playerColor:', playerColor);
       return;
     }
 
     if (isMakingMove) {
-      console.log('Already making a move, please wait');
+      console.log('🟦 Already making a move, please wait');
       return;
     }
 
     if (selectedSquare) {
       const piece = board[selectedSquare.row][selectedSquare.col];
-      
       if (piece && piece.color === currentPlayer) {
-        // Only allow moves that are in getValidMovesForPlayer
         const validMoves = getValidMovesForPlayer(board, currentPlayer);
         const isMoveValid = validMoves.some(
           (move) =>
@@ -432,42 +424,17 @@ const MultiplayerChess = () => {
             move.to.col === position.col
         );
         if (isMoveValid) {
-          console.log('Valid move, making move...');
+          console.log('🟦 Valid move, making move...');
           setIsMakingMove(true);
           const result = makeMove(board, selectedSquare, position);
-          
           const newTurn = currentPlayer === 'white' ? 'black' : 'white';
           const newMoveHistory = [...moveHistory, result.moveNotation];
-          
-          console.log('Updating database with move:', {
+          console.log('🟦 Updating database with move:', {
             board_state: result.newBoard,
             current_turn: newTurn,
             move_history: newMoveHistory,
             game_state: result.gameState
           });
-          
-          // Show game state notifications
-          if (result.isCheckmate) {
-            toast({
-              title: "Checkmate!",
-              description: `${currentPlayer === 'white' ? 'White' : 'Black'} wins!`,
-              variant: "default"
-            });
-          } else if (result.isStalemate) {
-            toast({
-              title: "Stalemate!",
-              description: "The game is a draw.",
-              variant: "default"
-            });
-          } else if (result.isCheck) {
-            toast({
-              title: "Check!",
-              description: `${newTurn === 'white' ? 'White' : 'Black'} is in check!`,
-              variant: "default"
-            });
-          }
-          
-          // Update the game session in Supabase
           supabase
             .from('game_sessions')
             .update({
@@ -481,12 +448,12 @@ const MultiplayerChess = () => {
                   : result.gameState === 'draw'
                   ? 'draw'
                   : null,
-              updated_at: new Date().toISOString() // Force update timestamp
+              updated_at: new Date().toISOString()
             })
             .eq('id', gameSession.id)
-            .then(async ({ error }) => {
+            .then(async ({ error, data }) => {
               if (error) {
-                console.error('Database update error:', error);
+                console.error('🟥 Database update error:', error);
                 toast({
                   title: "Error",
                   description: "Failed to make move",
@@ -494,26 +461,25 @@ const MultiplayerChess = () => {
                 });
                 setIsMakingMove(false);
               } else {
-                console.log('Move successfully updated in database');
+                console.log('🟩 Move successfully updated in database:', data);
                 setSelectedSquare(null);
-                // Fallback: ensure isMakingMove is reset if real-time update is slow
                 setTimeout(() => {
                   setIsMakingMove(false);
                 }, 2000);
               }
             });
         } else {
-          console.log('Invalid move (would leave king in check)');
+          console.log('🟦 Invalid move (would leave king in check)');
           setSelectedSquare(null);
         }
       }
     } else {
       const piece = board[position.row][position.col];
       if (piece && piece.color === currentPlayer) {
-        console.log('Selecting piece:', piece);
+        console.log('🟦 Selecting piece:', piece);
         setSelectedSquare(position);
       } else {
-        console.log('No valid piece to select');
+        console.log('🟦 No valid piece to select');
       }
     }
   }, [board, selectedSquare, currentPlayer, gameSession, playerColor, moveHistory, isMakingMove]);
