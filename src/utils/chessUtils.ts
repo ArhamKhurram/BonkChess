@@ -58,3 +58,9 @@ export const positionToNotation = (position: Position): string => {
 export const copyBoard = (board: (ChessPiece | null)[][]): (ChessPiece | null)[][] => {
   return board.map(row => row.map(piece => piece ? { ...piece } : null));
 };
+
+export const getPieceImage = (piece: ChessPiece): string => {
+  if (!piece) return '';
+  // The piece images are SVGs located in the public assets directory.
+  return `/assets/pieces/${piece.color}_${piece.type}.svg`;
+};

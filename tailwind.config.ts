@@ -1,7 +1,6 @@
 import type { Config } from "tailwindcss";
 
 export default {
-	darkMode: ["class"],
 	content: [
 		"./pages/**/*.{ts,tsx}",
 		"./components/**/*.{ts,tsx}",
@@ -18,6 +17,9 @@ export default {
 			}
 		},
 		extend: {
+			fontFamily: {
+				sans: ["Poppins", "sans-serif"],
+			},
 			colors: {
 				border: 'hsl(var(--border))',
 				input: 'hsl(var(--input))',

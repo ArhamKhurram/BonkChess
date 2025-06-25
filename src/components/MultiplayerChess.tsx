@@ -11,7 +11,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
+import { useNavigate } from 'react-router-dom';
 
 interface GameSession {
   id: string;
@@ -39,61 +41,15 @@ const MultiplayerChess = () => {
   }>({ white: [], black: [] });
   const [playerColor, setPlayerColor] = useState<'white' | 'black' | null>(null);
   const [showLobby, setShowLobby] = useState(true);
+  const [showWaiting, setShowWaiting] = useState(false);
   const [joiningGameId, setJoiningGameId] = useState('');
   const [availableGames, setAvailableGames] = useState<any[]>([]);
   const [isMakingMove, setIsMakingMove] = useState(false);
+  const [invitedGames, setInvitedGames] = useState<any[]>([]);
 
   const { user } = useAuth();
   const { toast } = useToast();
-
-  // Function to reload board state from database
-  const reloadBoardState = useCallback(async () => {
-    if (!gameSession) return;
-
-    try {
-      console.log('Reloading board state from database...');
-      
-      const { data, error } = await supabase
-        .from('game_sessions')
-        .select('*')
-        .eq('id', gameSession.id)
-        .single();
-
-      if (error) {
-        console.error('Error reloading board state:', error);
-        return;
-      }
-
-      console.log('Reloaded game data:', data);
-
-      // Parse board state
-      let parsedBoardState: (ChessPiece | null)[][];
-      
-      if (typeof data.board_state === 'string') {
-        parsedBoardState = JSON.parse(data.board_state) as (ChessPiece | null)[][];
-      } else if (Array.isArray(data.board_state)) {
-        parsedBoardState = data.board_state as unknown as (ChessPiece | null)[][];
-      } else {
-        console.error('Invalid board state format from database:', data.board_state);
-        parsedBoardState = initialBoard;
-      }
-
-      // Update all state from database
-      setGameSession({
-        ...data,
-        board_state: parsedBoardState,
-        current_turn: data.current_turn as 'white' | 'black',
-        game_status: data.game_status as 'waiting' | 'active' | 'completed' | 'abandoned'
-      });
-      setBoard(parsedBoardState);
-      setCurrentPlayer(data.current_turn as 'white' | 'black');
-      setMoveHistory(data.move_history || []);
-      
-      console.log('Board state reloaded successfully');
-    } catch (error) {
-      console.error('Error in reloadBoardState:', error);
-    }
-  }, [gameSession, setGameSession, setBoard, setCurrentPlayer, setMoveHistory]);
+  const navigate = useNavigate();
 
   // Add debugging for board state changes
   useEffect(() => {
@@ -164,6 +120,13 @@ const MultiplayerChess = () => {
               setCurrentPlayer(updatedSession.current_turn as 'white' | 'black');
               setMoveHistory(updatedSession.move_history || []);
               
+              // Always set playerColor based on user ID and session
+              const isWhitePlayer = updatedSession.white_player_id === user.id;
+              const isBlackPlayer = updatedSession.black_player_id === user.id;
+              if (isWhitePlayer) setPlayerColor('white');
+              else if (isBlackPlayer) setPlayerColor('black');
+              else setPlayerColor(null);
+              
               console.log('Board state updated to:', parsedBoardState);
             } else {
               console.log('Ignoring older board state update');
@@ -172,23 +135,13 @@ const MultiplayerChess = () => {
             // Reset loading state since we received an update
             setIsMakingMove(false);
             
-            // Reload board state to ensure consistency
-            reloadBoardState();
-            
-            // Determine if current user is in this game
+            // Show appropriate notifications based on game status
             const isWhitePlayer = updatedSession.white_player_id === user.id;
             const isBlackPlayer = updatedSession.black_player_id === user.id;
-            
             if (isWhitePlayer || isBlackPlayer) {
-              // Set player color if not already set
-              if (!playerColor) {
-                setPlayerColor(isWhitePlayer ? 'white' : 'black');
-              }
-              
-              // Show appropriate notifications based on game status
               if (updatedSession.game_status === 'active' && updatedSession.white_player_id && updatedSession.black_player_id) {
                 setShowLobby(false);
-                
+                setShowWaiting(false);
                 // Show turn change notification
                 const newTurn = updatedSession.current_turn as 'white' | 'black';
                 if (newTurn === (isWhitePlayer ? 'white' : 'black')) {
@@ -223,19 +176,7 @@ const MultiplayerChess = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [gameSession, user?.id, playerColor]);
-
-  // Add periodic board reload for active games
-  useEffect(() => {
-    if (!gameSession || gameSession.game_status !== 'active') return;
-
-    const interval = setInterval(() => {
-      console.log('Periodic board reload...');
-      reloadBoardState();
-    }, 3000); // Reload every 3 seconds
-
-    return () => clearInterval(interval);
-  }, [gameSession, reloadBoardState]);
+  }, [gameSession, user?.id]);
 
   const createGame = async () => {
     if (!user) return;
@@ -291,11 +232,24 @@ const MultiplayerChess = () => {
       setCurrentPlayer(data.current_turn as 'white' | 'black');
       setMoveHistory(data.move_history || []);
       setPlayerColor('white'); // Creator becomes white
-      setShowLobby(false); // Show the chess board immediately
+      // Show waiting screen for game creator
+      setShowLobby(false);
+      setShowWaiting(true);
       
-    toast({
-      title: "Game Created",
-        description: "Waiting for opponent to join..."
+      // Show a toast with the game ID and a copy button
+      toast({
+        title: 'Game Created!',
+        description: `Game ID: ${data.id}`,
+        action: (
+          <button
+            style={{ marginLeft: 8, padding: '2px 8px', borderRadius: 4, background: '#FFA500', color: '#222', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
+            onClick={() => {
+              navigator.clipboard.writeText(data.id);
+              toast({ title: 'Copied!', description: 'Game ID copied to clipboard.' });
+            }}
+          >Copy</button>
+        ),
+        duration: 10000
       });
       return { data, error: null };
     } catch (error) {
@@ -342,9 +296,22 @@ const MultiplayerChess = () => {
     });
   };
 
+  const getValidMovesForPlayerMemo = useCallback(() => {
+    if (!playerColor) return [];
+    return getValidMovesForPlayer(board, playerColor);
+  }, [board, playerColor]);
+
   const handleSquareClick = useCallback((position: Position) => {
     console.log('Square clicked:', position);
-    console.log('Game state:', { gameSession, gameState, currentPlayer, playerColor, isMakingMove });
+    console.log('Game state:', { 
+      gameSession: gameSession?.id, 
+      gameStatus: gameSession?.game_status, 
+      gameState, 
+      currentPlayer, 
+      playerColor, 
+      isMakingMove,
+      user: user?.id 
+    });
     
     if (!gameSession || gameSession.game_status !== 'active') {
       console.log('Game not active');
@@ -352,7 +319,7 @@ const MultiplayerChess = () => {
     }
 
     if (currentPlayer !== playerColor) {
-      console.log('Not your turn');
+      console.log('Not your turn - currentPlayer:', currentPlayer, 'playerColor:', playerColor);
       return;
     }
 
@@ -365,7 +332,16 @@ const MultiplayerChess = () => {
       const piece = board[selectedSquare.row][selectedSquare.col];
       
       if (piece && piece.color === currentPlayer) {
-        if (isValidMove(board, selectedSquare, position, piece)) {
+        // Only allow moves that are in getValidMovesForPlayer
+        const validMoves = getValidMovesForPlayer(board, currentPlayer);
+        const isMoveValid = validMoves.some(
+          (move) =>
+            move.from.row === selectedSquare.row &&
+            move.from.col === selectedSquare.col &&
+            move.to.row === position.row &&
+            move.to.col === position.col
+        );
+        if (isMoveValid) {
           console.log('Valid move, making move...');
           setIsMakingMove(true);
           const result = makeMove(board, selectedSquare, position);
@@ -409,7 +385,12 @@ const MultiplayerChess = () => {
               current_turn: newTurn,
               move_history: newMoveHistory,
               game_status: result.gameState === 'checkmate' ? 'completed' : 'active',
-              winner: result.gameState === 'checkmate' ? user.id : null,
+              winner:
+                result.gameState === 'checkmate'
+                  ? (currentPlayer === 'white' ? 'white' : 'black')
+                  : result.gameState === 'draw'
+                  ? 'draw'
+                  : null,
               updated_at: new Date().toISOString() // Force update timestamp
             })
             .eq('id', gameSession.id)
@@ -425,20 +406,14 @@ const MultiplayerChess = () => {
               } else {
                 console.log('Move successfully updated in database');
                 setSelectedSquare(null);
-                
-                // Force reload board state for both players
-                await reloadBoardState();
-                
-                // Add a small delay and reload again to ensure both players get the update
-                setTimeout(async () => {
-                  await reloadBoardState();
-                }, 500);
-                
-                setIsMakingMove(false);
+                // Fallback: ensure isMakingMove is reset if real-time update is slow
+                setTimeout(() => {
+                  setIsMakingMove(false);
+                }, 2000);
               }
             });
         } else {
-          console.log('Invalid move');
+          console.log('Invalid move (would leave king in check)');
           setSelectedSquare(null);
         }
       }
@@ -451,7 +426,7 @@ const MultiplayerChess = () => {
         console.log('No valid piece to select');
       }
     }
-  }, [board, selectedSquare, currentPlayer, gameSession, playerColor, moveHistory, isMakingMove, reloadBoardState]);
+  }, [board, selectedSquare, currentPlayer, gameSession, playerColor, moveHistory, isMakingMove]);
 
   // Function to join an existing game
   const joinGame = async (gameId: string) => {
@@ -525,7 +500,6 @@ const MultiplayerChess = () => {
       }
 
       // Determine which color to assign
-      let playerColor: 'white' | 'black';
       let updateData: any = {};
 
       console.log('Current game state:', {
@@ -536,7 +510,6 @@ const MultiplayerChess = () => {
       if (!existingGame.black_player_id) {
         // Black player slot is empty - joiner becomes black
         console.log('Black player slot empty - assigning black');
-        playerColor = 'black';
         updateData = {
           black_player_id: user.id,
           game_status: 'active'
@@ -597,12 +570,13 @@ const MultiplayerChess = () => {
         setBoard(parsedBoardState);
         setCurrentPlayer(updateResult.current_turn as 'white' | 'black');
         setMoveHistory(updateResult.move_history || []);
-        setPlayerColor(playerColor);
+        // Set playerColor to black since we're joining as black
+        setPlayerColor('black');
         setShowLobby(false);
         
         toast({
           title: "Success!",
-          description: `You have joined the game as Black!`,
+          description: "You have joined the game as Black!",
         });
       } catch (error) {
         console.error('Error parsing board state when joining:', error);
@@ -640,8 +614,17 @@ const MultiplayerChess = () => {
         return;
       }
 
-      console.log('Available games:', data);
-      setAvailableGames(data || []);
+      if (data && data.length > 0) {
+        const profileIds = data.map(g => g.white_player_id);
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, display_name, username')
+          .in('id', profileIds);
+        const profileMap = (profiles || []).reduce((acc, p) => { acc[p.id] = p; return acc; }, {});
+        setAvailableGames(data.map(g => ({ ...g, creatorProfile: profileMap[g.white_player_id] })));
+      } else {
+        setAvailableGames([]);
+      }
     } catch (error) {
       console.error('Unexpected error fetching games:', error);
     }
@@ -650,73 +633,80 @@ const MultiplayerChess = () => {
   // Fetch available games when component mounts
   useEffect(() => {
     fetchAvailableGames();
-  }, []);
-
-  // Test function to check database state
-  const testDatabaseState = async () => {
-    try {
-      console.log('Testing database state...');
-      
-      // Check all games
-      const { data: allGames, error: allGamesError } = await supabase
-        .from('game_sessions')
-        .select('*');
-      
-      console.log('All games:', allGames);
-      console.log('All games error:', allGamesError);
-      
-      // Check waiting games
-      const { data: waitingGames, error: waitingError } = await supabase
+    // Fetch invited games for the current user
+    if (user) {
+      supabase
         .from('game_sessions')
         .select('*')
-        .eq('game_status', 'waiting');
-      
-      console.log('Waiting games:', waitingGames);
-      console.log('Waiting games error:', waitingError);
-      
-    } catch (error) {
-      console.error('Test error:', error);
+        .eq('black_player_id', user.id)
+        .eq('game_status', 'active')
+        .order('created_at', { ascending: false })
+        .then(async ({ data, error }) => {
+          if (!error && data) {
+            // Fetch creator profiles for invites
+            const profileIds = data.map(g => g.white_player_id);
+            const { data: profiles } = await supabase
+              .from('profiles')
+              .select('id, display_name, username')
+              .in('id', profileIds);
+            const profileMap = (profiles || []).reduce((acc, p) => { acc[p.id] = p; return acc; }, {});
+            setInvitedGames(data.map(g => ({ ...g, creatorProfile: profileMap[g.white_player_id] })));
+          }
+        });
     }
-  };
+  }, [user]);
 
-  // Function to check current game state in database
-  const checkCurrentGameState = async () => {
-    if (!gameSession) {
-      console.log('No active game session');
-      return;
-    }
+  // Real-time subscription for available games
+  useEffect(() => {
+    // Subscribe to INSERT and DELETE events on game_sessions
+    const channel = supabase
+      .channel('available_games_realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'game_sessions',
+        },
+        (payload) => {
+          // Only update if the game is in 'waiting' status or was removed
+          if (
+            (payload.eventType === 'INSERT' && payload.new?.game_status === 'waiting') ||
+            (payload.eventType === 'DELETE' && payload.old?.game_status === 'waiting') ||
+            (payload.eventType === 'UPDATE' && (payload.new?.game_status === 'waiting' || payload.old?.game_status === 'waiting'))
+          ) {
+            fetchAvailableGames();
+          }
+        }
+      )
+      .subscribe();
 
-    try {
-      const { data, error } = await supabase
+    // Also update invited games for the current user
+    if (user) {
+      supabase
         .from('game_sessions')
         .select('*')
-        .eq('id', gameSession.id)
-        .single();
-
-      if (error) {
-        console.error('Error fetching current game:', error);
-        return;
-      }
-
-      console.log('Current game in database:', {
-        id: data.id,
-        game_status: data.game_status,
-        current_turn: data.current_turn,
-        board_state: data.board_state,
-        move_history: data.move_history
-      });
-
-      // Parse and log the board state
-      if (typeof data.board_state === 'string') {
-        const parsedBoard = JSON.parse(data.board_state);
-        console.log('Parsed board state:', parsedBoard);
-      } else {
-        console.log('Board state (object):', data.board_state);
-      }
-    } catch (error) {
-      console.error('Error checking game state:', error);
+        .eq('black_player_id', user.id)
+        .eq('game_status', 'active')
+        .order('created_at', { ascending: false })
+        .then(async ({ data, error }) => {
+          if (!error && data) {
+            // Fetch creator profiles for invites
+            const profileIds = data.map(g => g.white_player_id);
+            const { data: profiles } = await supabase
+              .from('profiles')
+              .select('id, display_name, username')
+              .in('id', profileIds);
+            const profileMap = (profiles || []).reduce((acc, p) => { acc[p.id] = p; return acc; }, {});
+            setInvitedGames(data.map(g => ({ ...g, creatorProfile: profileMap[g.white_player_id] })));
+          }
+        });
     }
-  };
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
 
   // Calculate valid moves for the selected piece
   const getValidMovesForSelectedPiece = useCallback((): Position[] => {
@@ -763,123 +753,317 @@ const MultiplayerChess = () => {
     }
   }, [gameSession]);
 
+  // Real-time subscription for game invites
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel('game_invite_realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'game_sessions',
+        },
+        (payload) => {
+          const newData = payload.new as any;
+          // If the current user is invited as black and the game is active
+          if (
+            newData.black_player_id === user.id &&
+            newData.game_status === 'active' &&
+            showLobby // Only show if in lobby
+          ) {
+            toast({
+              title: 'Game Invite',
+              description: 'You have been invited to a game! Join as Black?',
+              action: (
+                <button
+                  style={{ marginLeft: 8, padding: '2px 8px', borderRadius: 4, background: '#FFA500', color: '#222', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
+                  onClick={() => {
+                    // Set up the game session for the joining player
+                    let parsedBoardState;
+                    if (typeof newData.board_state === 'string') {
+                      parsedBoardState = JSON.parse(newData.board_state);
+                    } else if (Array.isArray(newData.board_state)) {
+                      parsedBoardState = newData.board_state;
+                    } else {
+                      parsedBoardState = initialBoard;
+                    }
+                    setGameSession({
+                      ...newData,
+                      board_state: parsedBoardState,
+                      current_turn: newData.current_turn,
+                      game_status: newData.game_status
+                    });
+                    setBoard(parsedBoardState);
+                    setCurrentPlayer(newData.current_turn);
+                    setMoveHistory(newData.move_history || []);
+                    setPlayerColor('black');
+                    setShowLobby(false);
+                  }}
+                >Join Game</button>
+              ),
+              duration: 15000
+            });
+          }
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, showLobby]);
+
+  // Manual refresh fallback
+  const manualRefreshGameState = async () => {
+    if (!gameSession) return;
+    try {
+      const { data, error } = await supabase
+        .from('game_sessions')
+        .select('*')
+        .eq('id', gameSession.id)
+        .single();
+      if (error) {
+        toast({ title: 'Error', description: 'Failed to refresh game state', variant: 'destructive' });
+        return;
+      }
+      let parsedBoardState;
+      if (typeof data.board_state === 'string') {
+        parsedBoardState = JSON.parse(data.board_state);
+      } else if (Array.isArray(data.board_state)) {
+        parsedBoardState = data.board_state;
+      } else {
+        parsedBoardState = initialBoard;
+      }
+      setGameSession({
+        ...data,
+        board_state: parsedBoardState,
+        current_turn: data.current_turn as 'white' | 'black',
+        game_status: data.game_status as 'waiting' | 'active' | 'completed' | 'abandoned'
+      });
+      setBoard(parsedBoardState);
+      setCurrentPlayer(data.current_turn as 'white' | 'black');
+      setMoveHistory(data.move_history || []);
+      // Set playerColor based on user ID
+      const isWhitePlayer = data.white_player_id === user?.id;
+      const isBlackPlayer = data.black_player_id === user?.id;
+      if (isWhitePlayer) setPlayerColor('white');
+      else if (isBlackPlayer) setPlayerColor('black');
+      else setPlayerColor(null);
+      toast({ title: 'Game state refreshed!' });
+    } catch (err) {
+      toast({ title: 'Error', description: 'Failed to refresh game state', variant: 'destructive' });
+    }
+  };
+
+  // Exit game handler
+  const handleExitGame = () => {
+    setGameSession(null);
+    setBoard(initialBoard);
+    setCurrentPlayer('white');
+    setMoveHistory([]);
+    setCapturedPieces({ white: [], black: [] });
+    setPlayerColor(null);
+    setShowLobby(true);
+    setShowWaiting(false);
+  };
+
   if (!user) {
     return (
-      <div className="flex items-center justify-center min-h-64">
-        <p className="text-white">Please sign in to play multiplayer chess</p>
+      <div className="flex flex-col items-center justify-center min-h-64 space-y-4 p-8 text-center">
+        <h3 className="text-2xl font-bold">See who's playing!</h3>
+        <p className="text-muted-foreground max-w-md">
+          Sign in to create a new game, join existing matches, and challenge your friends to a game of chess.
+        </p>
+        <Button 
+          onClick={() => navigate('/auth')} 
+          className="bg-[hsl(var(--bonk-orange))] hover:bg-[hsl(var(--bonk-orange-dark))] text-black font-bold"
+        >
+          Sign In to Continue
+        </Button>
       </div>
     );
   }
 
-  if (showLobby || !gameSession) {
+  if (showLobby) {
     return (
-      <div className="space-y-6">
-        <Card className="bg-slate-800 border-slate-700">
-          <CardHeader>
-            <CardTitle className="text-white">Multiplayer Lobby</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Button
-              onClick={createGame}
-              className="w-full bg-amber-600 hover:bg-amber-700"
-            >
-              Create New Game
-            </Button>
-            <Button
-              onClick={testDatabaseState}
-              className="w-full bg-blue-600 hover:bg-blue-700"
-            >
-              Test Database State
-            </Button>
-            {gameSession && (
-              <div className="text-center text-slate-300">
-                <p>Game created! Share this with a friend or invite them below.</p>
-                <p className="text-sm text-slate-400 mt-2">Game ID: {gameSession.id}</p>
+      <div className="space-y-4">
+        <Tabs defaultValue="create" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="create">Create New Game</TabsTrigger>
+            <TabsTrigger value="join">Join Existing Game</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="create">
+            <Card className="bg-transparent border-none">
+              <CardHeader className="p-4">
+                <CardTitle className="text-lg">Start a New Match</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 p-4 pt-0">
+                <Button onClick={createGame} className="w-full">
+                  Create New Game
+                </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="join">
+            <Card className="bg-transparent border-none">
+              <CardHeader className="p-4">
+                <CardTitle className="text-lg">Join by Game ID</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 p-4 pt-0">
+                <div className="space-y-1">
+                  <Label htmlFor="gameId">Game ID</Label>
+                  <Input
+                    id="gameId"
+                    value={joiningGameId}
+                    onChange={(e) => setJoiningGameId(e.target.value)}
+                    placeholder="Enter game ID..."
+                    className="h-9"
+                  />
+                </div>
+                <Button
+                  onClick={() => joinGame(joiningGameId)}
+                  disabled={!joiningGameId}
+                  className="w-full"
+                >
+                  Join Game
+                </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+        
+        <div>
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="text-xl font-semibold">Available Games</h3>
+            <Button onClick={fetchAvailableGames} variant="outline" size="sm">Refresh</Button>
+          </div>
+          <div className="space-y-2 max-h-64 overflow-y-auto p-2 rounded-lg bg-black/20">
+            {availableGames.length > 0 ? (
+              availableGames.map((game) => (
+                <Card key={game.id} className="bg-black/30 backdrop-blur-sm border border-white/10">
+                  <CardContent className="flex items-center justify-between p-3">
+                    <div className="truncate pr-4">
+                      <p className="font-sans font-semibold text-sm text-white/90 truncate">
+                        ID: {game.id} by {game.creatorProfile.display_name} (@{game.creatorProfile.username})
+                      </p>
+                      <p className="text-xs text-white/60">
+                        {new Date(game.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                    <Button 
+                      onClick={() => joinGame(game.id)} 
+                      size="sm"
+                      className="bg-[hsl(var(--bonk-orange))] hover:bg-[hsl(var(--bonk-orange-dark))] text-black font-bold flex-shrink-0"
+                    >
+                      Join
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))
+            ) : (
+              <div className="text-center p-8 text-muted-foreground">
+                No available games. Create one!
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+        
+        <FriendsList onInviteFriend={inviteFriend} />
 
-        <Card className="bg-slate-800 border-slate-700">
-          <CardHeader>
-            <CardTitle className="text-white">Join Existing Game</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="joinGameId" className="text-slate-300">Game ID</Label>
-              <Input
-                id="joinGameId"
-                type="text"
-                placeholder="Enter game ID..."
-                value={joiningGameId}
-                onChange={(e) => setJoiningGameId(e.target.value)}
-                className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-400"
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
-                    joinGame(joiningGameId);
-                  }
-                }}
-              />
-            </div>
-            <Button
-              onClick={() => joinGame(joiningGameId)}
-              disabled={!joiningGameId.trim()}
-              className="w-full bg-green-600 hover:bg-green-700 disabled:bg-slate-600"
-            >
-              Join Game
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Available Games List */}
-        <Card className="bg-slate-800 border-slate-700">
-          <CardHeader>
-            <CardTitle className="text-white flex items-center justify-between">
-              Available Games
-              <Button
-                onClick={fetchAvailableGames}
-                size="sm"
-                variant="outline"
-                className="text-xs"
-              >
-                Refresh
-              </Button>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {availableGames.length === 0 ? (
-              <p className="text-slate-400 text-center">No games available to join</p>
-            ) : (
-              <div className="space-y-2">
-                {availableGames.map((game) => (
-                  <div
-                    key={game.id}
-                    className="flex items-center justify-between p-2 bg-slate-700 rounded"
-                  >
-                    <div className="text-slate-300 text-sm">
-                      <p>Game ID: {game.id}</p>
-                      <p className="text-xs text-slate-400">
-                        Created: {new Date(game.created_at).toLocaleTimeString()}
+        {/* Invited Games Section */}
+        {invitedGames.length > 0 && (
+          <div className="mt-4">
+            <h3 className="text-xl font-semibold mb-2">Your Invites</h3>
+            <div className="space-y-2 max-h-64 overflow-y-auto p-2 rounded-lg bg-black/20">
+              {invitedGames.map((game) => (
+                <Card key={game.id} className="bg-black/30 backdrop-blur-sm border border-white/10">
+                  <CardContent className="flex items-center justify-between p-3">
+                    <div className="truncate pr-4">
+                      <p className="font-sans font-semibold text-sm text-white/90 truncate">
+                        ID: {game.id} by {game.creatorProfile.display_name} (@{game.creatorProfile.username})
+                      </p>
+                      <p className="text-xs text-white/60">
+                        {new Date(game.created_at).toLocaleString()}
                       </p>
                     </div>
                     <Button
                       onClick={() => {
-                        setJoiningGameId(game.id);
-                        joinGame(game.id);
+                        // Set up the game session for the joining player
+                        let parsedBoardState;
+                        if (typeof game.board_state === 'string') {
+                          parsedBoardState = JSON.parse(game.board_state);
+                        } else if (Array.isArray(game.board_state)) {
+                          parsedBoardState = game.board_state;
+                        } else {
+                          parsedBoardState = initialBoard;
+                        }
+                        setGameSession({
+                          ...game,
+                          board_state: parsedBoardState,
+                          current_turn: game.current_turn,
+                          game_status: game.game_status
+                        });
+                        setBoard(parsedBoardState);
+                        setCurrentPlayer(game.current_turn);
+                        setMoveHistory(game.move_history || []);
+                        setPlayerColor('black');
+                        setShowLobby(false);
                       }}
                       size="sm"
-                      className="bg-green-600 hover:bg-green-700"
+                      className="bg-[hsl(var(--bonk-orange))] hover:bg-[hsl(var(--bonk-orange-dark))] text-black font-bold flex-shrink-0"
                     >
                       Join
                     </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-        
-        <FriendsList onInviteFriend={inviteFriend} />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (showWaiting) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-64 space-y-6 p-8 text-center">
+        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-[hsl(var(--bonk-orange))]"></div>
+        <div className="space-y-4">
+          <h3 className="text-2xl font-bold">Waiting for Opponent</h3>
+          <p className="text-muted-foreground max-w-md">
+            Share this game ID with a friend to start playing:
+          </p>
+          <div className="flex items-center gap-2 justify-center">
+            <code className="px-4 py-2 bg-black/20 rounded-lg font-mono text-lg">
+              {gameSession?.id}
+            </code>
+            <Button
+              onClick={() => {
+                navigator.clipboard.writeText(gameSession?.id || '');
+                toast({ title: 'Copied!', description: 'Game ID copied to clipboard.' });
+              }}
+              size="sm"
+              variant="outline"
+            >
+              Copy
+            </Button>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            You'll be playing as White. The game will start automatically when your opponent joins.
+          </p>
+        </div>
+        <Button
+          onClick={() => {
+            setShowWaiting(false);
+            setShowLobby(true);
+          }}
+          variant="outline"
+        >
+          Back to Lobby
+        </Button>
       </div>
     );
   }
@@ -887,6 +1071,10 @@ const MultiplayerChess = () => {
   return (
     <div className="flex flex-col lg:flex-row gap-8 items-start justify-center">
       <div className="flex-shrink-0">
+        <div className="flex gap-2 mb-2">
+          <Button onClick={manualRefreshGameState} variant="outline" className="w-full">Refresh Game State</Button>
+          <Button onClick={handleExitGame} variant="destructive" className="w-full">Exit Game</Button>
+        </div>
         {/* Turn Indicator */}
         <div className="mb-4 text-center">
           <div className={cn(
@@ -902,22 +1090,6 @@ const MultiplayerChess = () => {
               You are playing as {playerColor === 'white' ? 'White' : 'Black'}
             </p>
           )}
-          <Button
-            onClick={checkCurrentGameState}
-            size="sm"
-            variant="outline"
-            className="mt-2 text-xs"
-          >
-            Check DB State
-          </Button>
-          <Button
-            onClick={reloadBoardState}
-            size="sm"
-            variant="outline"
-            className="mt-2 text-xs ml-2"
-          >
-            Reload Board
-          </Button>
         </div>
         
         <ChessBoard
@@ -928,7 +1100,7 @@ const MultiplayerChess = () => {
           validMoves={getValidMovesForSelectedPiece()}
         />
       </div>
-      <div className="w-full lg:w-80">
+      <div className="w-full lg:w-96">
         <GameInfo
           currentPlayer={currentPlayer}
           gameState={gameState}
