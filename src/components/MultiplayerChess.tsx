@@ -234,8 +234,9 @@ const MultiplayerChess = () => {
       setPlayerColor('white'); // Creator becomes white
       // Show waiting screen for game creator
       setShowLobby(false);
-      setShowWaiting(true);
-      
+      //setShowWaiting(true);       // turn show waiting false when black player id !== null
+      // removed cause we want white to directly go into the game.
+
       // Show a toast with the game ID and a copy button
       toast({
         title: 'Game Created!',
