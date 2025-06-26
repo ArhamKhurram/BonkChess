@@ -35,8 +35,8 @@
     --bonk-yellow: 45 93% 70%;
     --bonk-text: 0 0% 100%;
     --bonk-text-dark: 240 2% 65%;
-    --bonk-bg-start: 26 93% 60%;
-    --bonk-bg-end: 28 95% 40%;
+    --bonk-bg-start: 26 70% 35%;
+    --bonk-bg-end: 28 75% 25%;
     --bonk-card-bg: 26 93% 50%;
     --bonk-border: 26 93% 45%;
   }

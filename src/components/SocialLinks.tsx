@@ -11,7 +11,7 @@ const SocialLinks = () => {
   return (
     <div className="fixed bottom-4 right-4 flex items-center gap-4">
       <a
-        href="https://x.com/Bonkgambit"
+        href="https://x.com/BonkChess_sol"
         target="_blank"
         rel="noopener noreferrer"
         className="text-white/70 hover:text-white transition-colors"
